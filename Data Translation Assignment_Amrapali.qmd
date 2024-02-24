@@ -1,0 +1,390 @@
+---
+title: "Data Translation Assignment"
+author: "Amrapali Samanta"
+format: html
+toc: true
+editor: visual
+output:
+  html_document:
+    echo: false
+---
+
+# Introduction
+
+This report presents an analysis of headphone sales data from Amazon's tech products division. The objective is to provide insights and recommendations to increase revenues.
+
+The analysis focuses on three types of headphones: **Apple Airpods, Bose SoundSport Headphones, and Wired Headphones .**
+
+## Target audience:
+
+The target audience for this report is Amazon Technical Product Managers. These individuals are responsible for overseeing the development, launch, and performance of various technical products offered by Amazon. They are interested in gaining insights into the sales and revenue trends of different headphone products, particularly in urban markets, to inform strategic decision-making and future product development efforts.
+
+## Goal:
+
+The goal of this analysis is to understand the sales and revenue trends of different headphones in the year 2019. We aim to analyze consumer behavior and preferences in urban markets to inform our strategies for the year 2020.
+
+#### Note:
+
+For this analysis, we are only considering a subset of urban ZIP codes from cities such as Dallas, Boston, Los Angeles, San Francisco, Seattle, Atlanta, New York City, Portland, and Austin.
+
+# Data
+
+```{r}
+#| echo: false
+suppressMessages({
+library(tidyverse)
+library(tinytex)
+library(vtable)
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(stringr)
+library(ggalt)
+library(treemapify)
+library(scales)
+  })
+```
+
+```{r}
+#| echo: false
+
+library(rio)
+sales_data <- import('sales_data.Rdata')
+zip_info <- import('zip_info.csv')
+```
+
+## Data Dictionary:
+
+We have used two datasets of Sales and ZIP. The description of variables is as below:
+
+**Sales:**
+
+-   `Product`, the product that has been ordered
+
+-   `Quantity`, how many of the product was ordered (note this is a string, you’ll want to fix that!)
+
+-   `PriceEach`, the price of each item (note this is a string, you’ll want to fix that!)
+
+-   `DateTime` and `Date`, when the order was placed. `DateTime` includes both day and time-of-day when the order was placed, while `Date` is just the date
+
+-   `ZIP`, the ZIP code where the order was sent to
+
+-   `State` and `City`, the city and state where the order was sent to
+
+**Zip:**
+
+-   `ZIP`, which is a ZIP code we can use to join this data set with the `sales` data
+
+-   `TotalPopulation`, which is the population in that ZIP code
+
+-   `MedianHHIncome`, which is the median annual household income in that ZIP. Household income calculates the total income from everyone in a given household, and then finds the median household (Income statistics use 2020 ACS instead of 2018)
+
+-   `PCIncome`, which is the annual per-capita (i.e. per-person) income in that ZIP. Per-capita income sums up all the income earned by everyone in the ZIP, and then divides it by the number of people in that ZIP (which may include a lot of non-earners, or children) (Income statistics use 2020 ACS instead of 2018)
+
+-   `MedianAge`, the median age of people in the ZIP code
+
+-   `Race_*` variables, the number of people of each broad-category race in that ZIP code. Note that races are not mutually exclusive. Someone who is, for example, both White and Asian will be counted once as White and once as Asian
+
+-   `Ethnicity_Hispanic`, which is the number of people who are Hispanic in the ZIP code. Ethnicity can overlap with any race, so someone who is, for example, both Hispanic and Black will be counted once as Hispanic and once as Black
+
+-   `Citizens`, which is the number of US citizens living in the ZIP code
+
+```{r}
+#| echo: false
+
+# Data transformation
+sales_data$Quantity <- as.numeric(sales_data$Quantity)
+sales_data$PriceEach <- as.numeric(sales_data$PriceEach)
+# Convert DateTime to POSIXct format
+sales_data$DateTime <- as.POSIXct(sales_data$DateTime)
+# Extract month from DateTime
+sales_data$Month <- month(sales_data$DateTime, label = TRUE)
+# Convert ZIP codes to consistent format in sales_data
+sales_data <- sales_data %>%
+  mutate(ZIP = str_pad(ZIP, width = 5, side = "left", pad = "0"))
+# Convert ZIP codes to consistent format in zip_info
+zip_info <- zip_info %>%
+  mutate(ZIP = str_pad(ZIP, width = 5, side = "left", pad = "0"))
+# Perform the join
+merged_data <- left_join(sales_data, zip_info, by = "ZIP")
+
+
+```
+
+```{r}
+#| echo: false
+
+# Filter sales data for headphones only
+headphone_sales <- merged_data %>%
+  filter(Product %in% c("Bose SoundSport Headphones", "Apple Airpods Headphones", "Wired Headphones"))
+
+headphone_sales$Product <- ifelse(headphone_sales$Product == "Bose SoundSport Headphones", "Bose",
+                            ifelse(headphone_sales$Product == "Apple Airpods Headphones", "Apple",
+                                   ifelse(headphone_sales$Product == "Wired Headphones", "Wired", "Other")))
+
+```
+
+# Summary of Findings:
+
+## Story:
+
+Continue to focus on the sales of 'Apple Airpods Headphones' in the city of San Francisco during December month.
+
+For a detailed analysis and visual representation of these findings, please refer to the following sections.
+
+# Visualizations
+
+## Visualization 1: Total number of Headphones Sales in Urban Areas
+
+```{r}
+#| echo: false
+suppressWarnings({
+  
+  # Calculate total sales for each headphone type
+total_sales <- headphone_sales %>%
+  group_by(Product) %>%
+  summarise(Total_Sales = sum(Quantity))
+
+# Plotting the lollipop graph with three colors
+ggplot(total_sales, aes(x = Product, y = Total_Sales)) +
+  geom_lollipop(colour = c("red", "green", "blue")) +  # Lollipop points with three colors
+  labs(title = "Wired Headphones have the highest number of Sales",
+       x = "Headphone Name",
+       y = "Total Number of Sales") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10, face = "bold")) +
+  theme(panel.grid.major.y = element_line(color = "gray", size = 0.5),  # Only horizontal gridlines
+        panel.grid.minor = element_blank(),  # Remove minor gridlines
+        panel.grid.major.x = element_blank(),  # Remove vertical gridlines
+        legend.position = "none")  # Remove legend
+  
+})
+
+
+```
+
+Sales of Wired headphones is the highest. So we should also check if Wired headphones also generates highest revenue.
+
+## Visualization 2: Revenue Comparison of Headphone Products
+
+```{r}
+#| echo: false
+# Calculate Revenue
+headphone_sales$Revenue <- headphone_sales$Quantity * (headphone_sales$PriceEach)
+
+# Create Boxplot
+ggplot(headphone_sales, aes(x = Product, y = Revenue, fill = Product)) +
+  geom_boxplot() +
+  labs(title = "Revenue Analysis by Headphone Type",
+       x = "Headphone Type",
+       y = "Revenue (in $)",
+       fill = "Headphone Type") +
+  theme_minimal() +
+   theme(plot.title = element_text(size = 10, face = "bold")) +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$")) +  # Format y-axis as dollars
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+
+
+```
+
+Though Wired Headphones are sold more, Apple Airpods are generating more revenue overall.
+
+Because Apple Airpods gives us most revenue now we will look for insights focussing on Airpods so that we can keep on increasing revenue.
+
+## Visualization 3: Revenue Trend for Apple Airpods by Month
+
+```{r}
+#| echo: false
+# Filter the data for Apple Airpods
+# Final dataset
+apple_airpods_sales <- headphone_sales[headphone_sales$Product == "Apple", ]
+
+# Calculate revenue for each month
+apple_airpods_sales$Revenue <- as.numeric(apple_airpods_sales$Quantity) * as.numeric(apple_airpods_sales$PriceEach)
+```
+
+```{r}
+#| echo: false
+options(warn = -1)
+options(scipen = 999)
+# Calculate revenue for each month
+apple_airpods_sales$Revenue <- as.numeric(apple_airpods_sales$Quantity) * as.numeric(apple_airpods_sales$PriceEach)
+
+# Aggregate revenue by month
+monthly_revenue <- aggregate(Revenue ~ Month, data = apple_airpods_sales, sum)
+
+# Convert Month to factor and reorder levels by revenue
+monthly_revenue$Month <- factor(monthly_revenue$Month, levels = monthly_revenue$Month[order(monthly_revenue$Revenue, decreasing = TRUE)])
+
+# Create a bar plot to visualize monthly revenue for Apple Airpods
+ggplot(monthly_revenue, aes(x = Month, y = Revenue, fill = Month)) +
+  geom_bar(stat = "identity") +
+  labs(title = "December has highest revenue for Apple Airpods",
+       x = "Month",
+       y = "Revenue(in $)",
+       fill = "Month") +
+  theme_minimal() +
+   theme(plot.title = element_text(size = 10, face = "bold")) +
+  theme(panel.grid.major.y = element_line(color = "gray", size = 0.5),  # Only horizontal gridlines
+        panel.grid.minor = element_blank(),  # Remove minor gridlines
+        panel.grid.major.x = element_blank(),  # Remove vertical gridlines
+        legend.position = "none")  # Remove legend
+
+
+
+
+```
+
+The highest revenue is generated in the month of December.
+
+So now we know that we should focus on the sales of Airpods in December for greater revenues.
+
+Let's now see which location generates highest revenue for Airpods.
+
+Note: We only have data for 8 states.
+
+## Visualization 4: Revenue Distribution by State for all Headphones
+
+```{r}
+#| echo: false
+
+# Create a dataset to map abbreviated state names to full names
+state_names <- data.frame(
+  State = c("CA", "NY", "WA", "MA", "TX", "OR", "ME", "GA"),
+  Full_Name = c("California(CA)", "New York(NY)", "Washington(WA)", "Massachusetts(MA)", "Texas(TX)", "Oregon(OR)", "Maine(ME)", "Georgia(GA)")
+)
+
+# Aggregate revenue by state
+state_revenue <- aggregate(Revenue ~ State, data = headphone_sales, FUN = sum)
+
+# Merge state_revenue with state_names to get full state names
+state_revenue_full <- merge(state_revenue, state_names, by = "State")
+
+# Plotting the treemap with custom text labels using full state names
+state_revenue_full %>%
+  ggplot(aes(area = Revenue, fill = Revenue, label = paste(Full_Name, ": ", dollar(Revenue)))) +
+  geom_treemap() +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +  # Gradient fill based on revenue values
+  geom_treemap_text(colour = "white", place = "centre") +  # Center text labels and set text color to white
+labs(title = bquote(bold("California state has highest revenue from Headphones")),  # Make title bold
+       fill = "Revenue")  # Adjust fill legend title
+
+
+
+```
+
+We understand that state of California(CA) has highest revenue overall for all types of headphones.
+
+Let's see now if it is true for Apple Airpods as well?
+
+## Visualization 5: Revenue Distribution by State and City for Apple Airpods
+
+```{r}
+#| echo: false
+suppressMessages({
+options(warn = -1)
+options(scipen = 999)
+# Aggregate revenue by city for Apple Airpods
+city_revenue <- aggregate(Revenue ~ State + City, data = apple_airpods_sales, FUN = sum)
+
+# Plotting the bar chart with text labels
+ggplot(city_revenue, aes(x = reorder(State, -Revenue), y = Revenue, fill = City, label = City)) +
+  geom_bar(stat = "identity", width = 1.02) +  # Adjust the width of the bars
+  geom_text(aes(label = City), position = position_stack(vjust = 0.5), color = "black", size=2.3) +
+  labs(title = "California state has highest revenue from sale of Apple Airpods",
+       x = "State",
+       y = "Revenue(in $)",
+       fill = "City") +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10, face = "bold")) +
+    theme(panel.grid.major.y = element_line(color = "gray", size = 0.5),  # Only horizontal gridlines
+        panel.grid.minor = element_blank(),  # Remove minor gridlines
+        panel.grid.major.x = element_blank()  # Remove vertical gridlines
+        )  # Remove legend
+})
+```
+
+Yes, it seems that California also generates highest revenue for Apple Airpods compared to the 8 states.
+
+Does high income people live in California?
+
+Unfortunately, we have only one urban zipcode per city so let's see which City has highest Median household income.
+
+## Visualization 6: Median Household Income by City
+
+```{r}
+#| echo: false
+# Define custom color palette
+my_colors <- c("#1f78b4", "#33a02c")
+
+# Plot MedianHHIncome by zip code with corresponding city and state
+ggplot(merged_data, aes(x = ZIP, y = MedianHHIncome, label = paste(City, ", ", State))) +
+  geom_point(color = my_colors[1], size = 1, alpha = 0.8) + # Plot points with custom color and transparency
+  geom_text(vjust = 1.5, size = 3, color = my_colors[2]) + # Add text labels with custom color below the points
+  labs(title = "Median Household Income of San Francisco is the highest",
+       x = "ZIP Code",
+       y = "Median Household Income (in $)") +
+  theme_minimal() +
+   theme(plot.title = element_text(size = 10, face = "bold")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),  # Rotate x-axis labels
+        panel.grid.major = element_line(color = "gray", linetype = "dotted"))  # Add dotted grid lines
+
+
+
+```
+
+We find that the ZIP code 94016 which belongs to the city 'San Francisco' of California state has the highest median household income.
+
+From this we can understand that there is a possibility that people belonging to this zipcode in San Francisco can afford more headphones.
+
+Let's verify that if sale of Apple Airpods is also highest in San Francisco.
+
+## Visualization 7: Sales Distribution by Zip Code for Apple Airpods
+
+```{r}
+#| echo: false
+suppressMessages({
+  # Calculate total sales of Apple Airpods by ZIP code
+  total_sales_by_zip <- merged_data %>%
+    filter(Product == "Apple Airpods Headphones") %>%
+    group_by(ZIP) %>%
+    summarise(total_sales = sum(Quantity))
+
+  # Find the ZIP code with the highest sales
+  highest_sales_zip <- total_sales_by_zip %>%
+    filter(total_sales == max(total_sales))
+  top_highest_sales_zip <- total_sales_by_zip %>%
+    arrange(desc(total_sales)) %>%
+    slice(1)
+
+  # Create the bar plot
+ggplot(total_sales_by_zip, aes(x = ZIP, y = total_sales, fill = factor(ZIP %in% top_highest_sales_zip$ZIP))) +
+  geom_bar(stat = "identity", width = 0.7, position = "identity", height = 0.7) +
+  
+  scale_fill_manual(values = c("FALSE" = "gray", "TRUE" = "blue")) +
+  labs(title = "Zip 94016 (San Francisco) has the highest sale of Apple Airpods",
+       x = "ZIP Code",
+       y = "Total number of sales",  # Remove y-axis label
+       fill = "Highest Sales ZIP") +
+  theme_minimal() +
+  coord_flip() +
+  theme(plot.title = element_text(size = 10, face = "bold"),
+        axis.line = element_line(color = "black"),
+        axis.ticks = element_line(color = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(1, 1, 1, 1, "cm")) +  # Adjust the margins as needed
+  scale_x_discrete(expand = c(0, 0)) +  # Set expand parameter for x-axis scale
+  scale_y_continuous(expand = c(0, 0))  # Set expand parameter for y-axis scale
+})
+
+```
+
+So this looks like zip codes 94016 which belongs to San Francisco does have the highest sales.
+
+We already saw highest revenue is from California and the zipcode '94016' of San Francisco having highes reconfirms that.
+
+# Conclusion
+
+Based on the analysis, we are taking a decision to call out Apple Airpods are the top-performing product in the headphones category in terms of revenue, with December being the peak sales month. The state of California, particularly the city of San Francisco contributes significantly to headphone sales. Additionally, zip code 94016 stand out as key areas for headphone sales, particularly for Apple Airpods.
